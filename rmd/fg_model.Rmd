@@ -1,0 +1,241 @@
+---
+title: "Fine-Gray model estimates"
+output:
+    html_document:
+        code_folding: hide
+        toc:          true
+---
+
+The Fine-Gray model estimates the hazard of a competing event (so-termed the sub-distribution hazard) among the risk set of those yet to experience an event of the type of interest by time t.
+
+```{r setup, include=FALSE}
+
+here::i_am("rmd/fg_model.Rmd")
+
+library(tidyverse)
+library(lubridate)
+library(survival)
+library(here)
+
+source(here("r/fg_functions.R"))
+
+load(here("data/processed_data.RData"))
+
+figure_path <- here("figures")
+```
+
+```{r pdata}
+
+# define month groupings
+number_order <- c("Mar 2020", "Dec 2020", "Jan 2021", "Feb 2021", "Mar 2021", "Apr 2021", "May 2021", "Jun 2021", "Jul 2021", "Aug 2021", "Sep 2021", "Apr 2020", "May 2020", "Jun 2020", "Jul 2020", "Aug 2020", "Sep 2020", "Oct 2020", "Nov 2020")
+level_order_thinned <- c("Mar 2020", "May 2020", "Jul 2020", "Sep 2020", "Nov 2020", "Jan 2021", "Mar 2021", "May 2021", "Jul 2021", "Sep 2021")
+
+# generate finegray pdata dataset for finegray models
+fg_data <- hosp %>% mutate(
+    eventm = as.numeric(eventm),
+    eventm = if_else(is.na(eventm), 0, eventm),
+    eventm = factor(eventm, 0:2, labels = c("Censor", "Death", "Discharge"))
+)
+
+pdata <- finegray(Surv(fg_data$time1m, fg_data$eventm) ~ ., data = fg_data)
+
+pdata$ageGrp7 <- relevel(pdata$ageGrp7, ref = "[15,25)")
+pdata$monthyear <- relevel(pdata$monthyear, ref = "Jun 2020")
+pdata$charlson_index <- relevel(pdata$charlson_index, ref = "0")
+pdata$imd_quintile <- relevel(pdata$imd_quintile, ref = "5")
+pdata$sexHC <- relevel(pdata$sex, ref = "Female")
+```
+
+## Stratified Fine-Gray model results
+
+Hospitalised fatality sub-distribution hazard ratio by month of hospital admission, stratified by age group, region of residence and vaccination status, with regression adjustment (main effects) on sex, ethnicity, IMD quintile, hospital load, and CCI. 
+
+```{r fg-strata}
+
+# define the labelling
+labels <- tibble(
+    label = c(
+        level_order,
+        "Male", "Female",
+        "White", "Asian", "Black", "Mixed/Other/Unknown",
+        "1 (Most deprived)", "2", "3", "4", "5 (Least deprived)",
+        "0", "1-2", "3-4", "5+",
+        "0-20%", "20-40%", "40-60%", "60-80%", "80-90%", "90-100%"
+    ),
+    group = c(
+        rep("Month", 19),
+        rep("Sex", 2),
+        rep("Ethnicity", 4),
+        rep("IMD", 5),
+        rep("CCI", 4),
+        rep("Hospital load", 6)
+    )
+)
+
+levels <- labels %>% filter(!label %in% c("Jun 2020", "Female", "White", "5 (Least deprived)", "0", "0-20%"))
+
+fg_fit <- coxph(Surv(fgstart, fgstop, fgstatus) ~ monthyear + sexHC + strata(ageGrp7) + strata(phec_name) + strata(vaccine) + ethGrp4 + imd_quintile + charlson_index + bed_occupancy_cat,
+    weight = fgwt,
+    data = pdata
+)
+
+tidy_fg_fit <- broom::tidy(fg_fit, conf.int = TRUE, exponentiate = TRUE)
+
+tidy_fg_fit
+
+fg_plot(var_group = c("Month"), plot_title = "")
+
+ggsave(here(figure_path, "fg_forest_strata_monthonly.pdf"), device = cairo_pdf)
+
+fg_plot(var_group = c("Sex", "Ethnicity", "IMD", "CCI", "Hospital load"), plot_title = "")
+
+ggsave(here(figure_path, "fg_forest_strata.pdf"), device = cairo_pdf)
+```
+
+Hospitalised fatality sub-distribution hazard ratio by vaccine status for January-September 2021, stratified by age group, region of residence and month of hospital admission, with regression adjustment (main effects) on sex, ethnicity, IMD quintile, hospital load, and CCI. 
+
+```{r fg-strata-vaccine}
+
+# define labelling
+labels <- tibble(
+    label = c(
+        "Unvaccinated", "<21 days after first dose", "\u226521 days after first dose", "\u226514 days after second dose",
+        "Male", "Female",
+        "White", "Asian", "Black", "Mixed/Other/Unknown",
+        "1 (Most deprived)", "2", "3", "4", "5 (Least deprived)",
+        "0", "1-2", "3-4", "5+",
+        "0-20", "20-40", "40-60", "60-80", "80-90", "90-100"
+    ),
+    group = c(
+        rep("Vaccine", 4),
+        rep("Sex", 2),
+        rep("Ethnicity", 4),
+        rep("IMD", 5),
+        rep("CCI", 4),
+        rep("Hospital load", 6)
+    )
+)
+
+levels <- labels %>% filter(!label %in% c("Unvaccinated", "Female", "White", "5 (Least deprived)", "0", "0-20"))
+
+fg_fit <- coxph(Surv(fgstart, fgstop, fgstatus) ~ vaccine + sexHC + strata(ageGrp7) + strata(phec_name) + strata(monthyear) + ethGrp4 + imd_quintile + charlson_index + bed_occupancy_cat,
+    weight = fgwt,
+    data = pdata %>% filter(vaccine != ">14 days post third dose")
+)
+
+tidy_fg_fit <- broom::tidy(fg_fit, conf.int = TRUE, exponentiate = TRUE)
+
+tidy_fg_fit
+
+fg_plot_vaccine(var_group = c("Vaccine"), plot_title = "")
+
+ggsave(here(figure_path, "fg_forest_strata_vaccineonly.pdf"), device = cairo_pdf)
+```
+
+## Shift analyses
+
+Hospitalised fatality sub-distribution hazard ratio by month of hospital admission, stratified by age group, region of residence and vaccination status, with regression adjustment (main effects) on sex, ethnicity, IMD quintile, hospital load, and CCI.
+
+```{r with-shift, fig.height=7, eval=FALSE}
+
+fg_data_shift_0 <- hosp_shift_0 %>% mutate(
+    eventm = as.numeric(eventm),
+    eventm = if_else(is.na(eventm), 0, eventm),
+    eventm = factor(eventm, 0:2, labels = c("Censor", "Death", "Discharge"))
+)
+
+pdata_shift_0 <- finegray(Surv(fg_data_shift_0$time1m, fg_data_shift_0$eventm) ~ ., data = fg_data_shift_0)
+
+pdata_shift_0$ageGrp7 <- relevel(pdata_shift_0$ageGrp7, ref = "[15,25)")
+pdata_shift_0$monthyear <- relevel(pdata_shift_0$monthyear, ref = "Jun 2020")
+pdata_shift_0$charlson_index <- relevel(pdata_shift_0$charlson_index, ref = "0")
+
+fg_data_shift_1 <- hosp_shift_1 %>% mutate(
+    eventm = as.numeric(eventm),
+    eventm = if_else(is.na(eventm), 0, eventm),
+    eventm = factor(eventm, 0:2, labels = c("Censor", "Death", "Discharge"))
+)
+
+pdata_shift_1 <- finegray(Surv(fg_data_shift_1$time1m, fg_data_shift_1$eventm) ~ ., data = fg_data_shift_1)
+
+pdata_shift_1$ageGrp7 <- relevel(pdata_shift_1$ageGrp7, ref = "[15,25)")
+pdata_shift_1$monthyear <- relevel(pdata_shift_1$monthyear, ref = "Jun 2020")
+pdata_shift_1$charlson_index <- relevel(pdata_shift_1$charlson_index, ref = "0")
+
+fg_data_shift_2 <- hosp_shift_2 %>% mutate(
+    eventm = as.numeric(eventm),
+    eventm = if_else(is.na(eventm), 0, eventm),
+    eventm = factor(eventm, 0:2, labels = c("Censor", "Death", "Discharge"))
+)
+
+pdata_shift_2 <- finegray(Surv(fg_data_shift_2$time1m, fg_data_shift_2$eventm) ~ ., data = fg_data_shift_2)
+
+pdata_shift_2$ageGrp7 <- relevel(pdata_shift_2$ageGrp7, ref = "[15,25)")
+pdata_shift_2$monthyear <- relevel(pdata_shift_2$monthyear, ref = "Jun 2020")
+pdata_shift_2$charlson_index <- relevel(pdata_shift_2$charlson_index, ref = "0")
+
+fg_data_shift_3 <- hosp_shift_3 %>% mutate(
+    eventm = as.numeric(eventm),
+    eventm = if_else(is.na(eventm), 0, eventm),
+    eventm = factor(eventm, 0:2, labels = c("Censor", "Death", "Discharge"))
+)
+
+pdata_shift_3 <- finegray(Surv(fg_data_shift_3$time1m, fg_data_shift_3$eventm) ~ ., data = fg_data_shift_3)
+
+pdata_shift_3$ageGrp7 <- relevel(pdata_shift_3$ageGrp7, ref = "[15,25)")
+pdata_shift_3$monthyear <- relevel(pdata_shift_3$monthyear, ref = "Jun 2020")
+pdata_shift_3$charlson_index <- relevel(pdata_shift_3$charlson_index, ref = "0")
+
+fg_data_shift_4 <- hosp_shift_4 %>% mutate(
+    eventm = as.numeric(eventm),
+    eventm = if_else(is.na(eventm), 0, eventm),
+    eventm = factor(eventm, 0:2, labels = c("Censor", "Death", "Discharge"))
+)
+
+pdata_shift_4 <- finegray(Surv(fg_data_shift_4$time1m, fg_data_shift_4$eventm) ~ ., data = fg_data_shift_4)
+
+pdata_shift_4$ageGrp7 <- relevel(pdata_shift_4$ageGrp7, ref = "[15,25)")
+pdata_shift_4$monthyear <- relevel(pdata_shift_4$monthyear, ref = "Jun 2020")
+pdata_shift_4$charlson_index <- relevel(pdata_shift_4$charlson_index, ref = "0")
+
+fg_fit_shift_0 <- coxph(Surv(fgstart, fgstop, fgstatus) ~ monthyear + sexHC + strata(ageGrp7) + strata(phec_name) + strata(vaccine) + ethGrp4 + imd_quintile + charlson_index,
+    weight = fgwt,
+    data = pdata_shift_0
+)
+
+fg_fit_shift_1 <- coxph(Surv(fgstart, fgstop, fgstatus) ~ monthyear + sexHC + strata(ageGrp7) + strata(phec_name) + strata(vaccine) + ethGrp4 + imd_quintile + charlson_index,
+    weight = fgwt,
+    data = pdata_shift_1
+)
+
+fg_fit_shift_2 <- coxph(Surv(fgstart, fgstop, fgstatus) ~ monthyear + sexHC + strata(ageGrp7) + strata(phec_name) + strata(vaccine) + ethGrp4 + imd_quintile + charlson_index,
+    weight = fgwt,
+    data = pdata_shift_2
+)
+
+fg_fit_shift_3 <- coxph(Surv(fgstart, fgstop, fgstatus) ~ monthyear + sexHC + strata(ageGrp7) + strata(phec_name) + strata(vaccine) + ethGrp4 + imd_quintile + charlson_index,
+    weight = fgwt,
+    data = pdata_shift_3
+)
+
+fg_fit_shift_4 <- coxph(Surv(fgstart, fgstop, fgstatus) ~ monthyear + sexHC + strata(ageGrp7) + strata(phec_name) + strata(vaccine) + ethGrp4 + imd_quintile + charlson_index,
+    weight = fgwt,
+    data = pdata_shift_4
+)
+
+tidy_fg_fit_shift <- broom::tidy(fg_fit_shift_0, conf.int = TRUE, exponentiate = TRUE) %>%
+    head(n = 18) %>%
+    mutate(shift = "0 days") %>%
+    bind_rows(broom::tidy(fg_fit_shift_1, conf.int = TRUE, exponentiate = TRUE) %>% head(n = 18) %>% mutate(shift = "1 day")) %>%
+    bind_rows(broom::tidy(fg_fit_shift_2, conf.int = TRUE, exponentiate = TRUE) %>% head(n = 18) %>% mutate(shift = "2 days")) %>%
+    bind_rows(broom::tidy(fg_fit_shift_3, conf.int = TRUE, exponentiate = TRUE) %>% head(n = 18) %>% mutate(shift = "3 days")) %>%
+    bind_rows(broom::tidy(fg_fit_shift_4, conf.int = TRUE, exponentiate = TRUE) %>% head(n = 18) %>% mutate(shift = "4 days"))
+
+labels <- tibble(label = c(level_order, level_order, level_order, level_order, level_order), shift = c(rep("0 days", 19), rep("1 day", 19), rep("2 days", 19), rep("3 days", 19), rep("4 days", 19)))
+
+levels <- labels %>% filter(!label %in% c("Jun 2020"))
+
+fg_plot_shift(plot_title = "")
+
+ggsave(here(figure_path, "fg_shift.pdf"), device = cairo_pdf)
+```

@@ -1,0 +1,411 @@
+---
+title: "Population characteristics"
+output:
+    html_document:
+        code_folding: hide
+        toc:          true
+---
+
+```{r setup, include=FALSE}
+
+here::i_am("rmd/pop_chars.Rmd")
+
+library(tidyverse)
+library(lubridate)
+library(scales)
+library(ggpubr)
+library(here)
+
+load(here("data/processed_data.RData"))
+
+figure_path <- here("figures")
+```
+
+## Tables
+
+Characteristics of the study population compared with all people hospital-onset COVID-19 in England and all people with PCR-confirmed community-acquired COVID-19 in England.
+
+```{r baseline}
+
+hosp %>% count()
+
+# censored outcomes
+hosp %>%
+    filter(is.na(eventm)) %>%
+    count()
+hosp %>%
+    filter(is.na(eventm) & time1m == 90) %>%
+    count()
+hosp %>%
+    filter(is.na(eventm) & time1m < 90) %>%
+    count()
+
+hosp %>%
+    group_by(ageGrp7) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+hosp %>%
+    group_by(sexHC) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+hosp %>%
+    group_by(ethGrp4) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+hosp %>%
+    group_by(pheRegion) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+hosp %>%
+    group_by(imd_quintile) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+hosp %>%
+    group_by(monthyear) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+hosp %>%
+    filter(monthyear %in% c("Jan 2021", "Feb 2021", "Mar 2021", "Apr 2021", "May 2021", "Jun 2021", "Jul 2021", "Aug 2021", "Sep 2021", "Oct 2021", "Nov 2021", "Dec 2021")) %>%
+    group_by(vaccine) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+hosp %>%
+    filter(!is.na(bed_occupancy_cat)) %>%
+    group_by(bed_occupancy_cat) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+hosp %>%
+    filter(!is.na(charlson_index)) %>%
+    group_by(charlson_index) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+hosp %>%
+    mutate(linkset = if_else(linkset == "CoV:SUS:ECDS", "CoV:ECDS", linkset)) %>%
+    group_by(linkset) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+hosp %>%
+    group_by(eventm) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+hosp %>%
+    group_by(eventm) %>%
+    summarise(
+        med = median(time1m),
+        lq = quantile(time1m, 0.25),
+        uq = quantile(time1m, 0.75)
+    )
+
+# hosp by event
+hosp %>%
+    group_by(ageGrp7, eventm) %>%
+    summarise(n = n()) %>%
+    mutate(
+        pct = round(n / sum(n) * 100, 1),
+        val = paste0(n, " (", pct, "%)")
+    ) %>%
+    select(eventm, ageGrp7, val) %>%
+    pivot_wider(names_from = eventm, values_from = val)
+
+hosp %>%
+    group_by(sexHC, eventm) %>%
+    summarise(n = n()) %>%
+    mutate(
+        pct = round(n / sum(n) * 100, 1),
+        val = paste0(n, " (", pct, "%)")
+    ) %>%
+    select(eventm, sexHC, val) %>%
+    pivot_wider(names_from = eventm, values_from = val)
+
+hosp %>%
+    group_by(ethGrp4, eventm) %>%
+    summarise(n = n()) %>%
+    mutate(
+        pct = round(n / sum(n) * 100, 1),
+        val = paste0(n, " (", pct, "%)")
+    ) %>%
+    select(eventm, ethGrp4, val) %>%
+    pivot_wider(names_from = eventm, values_from = val)
+
+hosp %>%
+    group_by(pheRegion, eventm) %>%
+    summarise(n = n()) %>%
+    mutate(
+        pct = round(n / sum(n) * 100, 1),
+        val = paste0(n, " (", pct, "%)")
+    ) %>%
+    select(eventm, pheRegion, val) %>%
+    pivot_wider(names_from = eventm, values_from = val)
+
+hosp %>%
+    group_by(imd_quintile, eventm) %>%
+    summarise(n = n()) %>%
+    mutate(
+        pct = round(n / sum(n) * 100, 1),
+        val = paste0(n, " (", pct, "%)")
+    ) %>%
+    select(eventm, imd_quintile, val) %>%
+    pivot_wider(names_from = eventm, values_from = val)
+
+hosp %>%
+    group_by(monthyear, eventm) %>%
+    summarise(n = n()) %>%
+    mutate(
+        pct = round(n / sum(n) * 100, 1),
+        val = paste0(n, " (", pct, "%)")
+    ) %>%
+    select(eventm, monthyear, val) %>%
+    pivot_wider(names_from = eventm, values_from = val)
+
+hosp %>%
+    group_by(bed_occupancy_cat, eventm) %>%
+    summarise(n = n()) %>%
+    mutate(
+        pct = round(n / sum(n) * 100, 1),
+        val = paste0(n, " (", pct, "%)")
+    ) %>%
+    select(eventm, bed_occupancy_cat, val) %>%
+    pivot_wider(names_from = eventm, values_from = val)
+
+hosp %>%
+    filter(
+        monthyear %in% c("Jan 2021", "Feb 2021", "Mar 2021", "Apr 2021", "May 2021", "Jun 2021", "Jul 2021", "Aug 2021", "Sep 2021", "Oct 2021", "Nov 2021", "Dec 2021"),
+        vaccine != ">14 days post third dose"
+    ) %>%
+    group_by(vaccine, eventm) %>%
+    summarise(n = n()) %>%
+    mutate(
+        pct = round(n / sum(n) * 100, 1),
+        val = paste0(n, " (", pct, "%)")
+    ) %>%
+    select(eventm, vaccine, val) %>%
+    pivot_wider(names_from = eventm, values_from = val)
+
+hosp %>%
+    group_by(charlson_index, eventm) %>%
+    summarise(n = n()) %>%
+    mutate(
+        pct = round(n / sum(n) * 100, 1),
+        val = paste0(n, " (", pct, "%)")
+    ) %>%
+    select(eventm, charlson_index, val) %>%
+    pivot_wider(names_from = eventm, values_from = val)
+
+hosp %>%
+    mutate(linkset = if_else(linkset == "CoV:SUS:ECDS", "CoV:ECDS", linkset)) %>%
+    group_by(linkset, eventm) %>%
+    summarise(n = n()) %>%
+    mutate(
+        pct = round(n / sum(n) * 100, 1),
+        val = paste0(n, " (", pct, "%)")
+    ) %>%
+    select(eventm, linkset, val) %>%
+    pivot_wider(names_from = eventm, values_from = val)
+```
+
+Nosocomial comparison
+
+```{r noso}
+
+# nosocomial infections
+
+load(here("data/nosocomial_data.RData"))
+
+noso %>% count()
+
+noso %>%
+    mutate(
+        ageGrp7 = cut(age,
+            breaks = c(0, 15, 25, 45, 65, 75, 85, Inf),
+            right = FALSE,
+            include.lowest = TRUE, ordered.result = TRUE
+        )
+    ) %>%
+    group_by(ageGrp7) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+noso %>%
+    group_by(sexHC) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+noso %>%
+    mutate(
+        ethnicity_final = factor(ethnicity_final, ordered = FALSE),
+        ethGrp4 = fct_collapse(ethnicity_final,
+            Asian = c("Any other Asian background", "Bangladeshi (Asian or Asian British)", "Indian (Asian or Asian British)", "Indian (Asian or Asian British)", "Pakistani (Asian or Asian British)"),
+            Black = c("African (Black or Black British)", "Any other Black background", "Caribbean (Black or Black British)"),
+            `Mixed/Other/Unknown` = c("Any other ethnic group", "Any other Mixed background", "Chinese (other ethnic group)", "White and Asian (Mixed)", "White and Black African (Mixed)", "White and Black Caribbean (Mixed)", "Unknown"),
+            White = c("Any other White background", "British (White)", "Irish (White)")
+        ),
+        ethGrp4 = fct_relevel(ethGrp4, "White", "Asian", "Black", "Mixed/Other/Unknown")
+    ) %>%
+    group_by(ethGrp4) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+noso %>%
+    mutate(pheRegion = factor(phec_name, levels = c("London", "East Midlands", "East of England", "North East", "North West", "South East", "South West", "West Midlands", "Yorkshire and Humber"), ordered = FALSE)) %>%
+    group_by(pheRegion) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+noso %>%
+    mutate(imd_quintile = ceiling(imd_decile / 2) %>% factor()) %>%
+    group_by(imd_quintile) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+noso %>%
+    mutate(
+        monthyear = paste0(lubridate::month(specimen_date, label = TRUE), " ", year(specimen_date)),
+        monthyear = factor(monthyear, levels = level_order)
+    ) %>%
+    group_by(monthyear) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+noso %>%
+    group_by(eventm) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+noso %>%
+    group_by(eventm) %>%
+    summarise(
+        med = median(time1m),
+        lq = quantile(time1m, 0.25),
+        uq = quantile(time1m, 0.75)
+    )
+```
+
+Comparison to all 
+
+```{r comparison}
+
+load(here("data/all_admissions_data.RData"))
+
+all_comparison %>% count()
+
+all_comparison %>%
+    group_by(ageGrp7) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+all_comparison %>%
+    group_by(sex) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+all_comparison %>%
+    group_by(ethGrp4) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+all_comparison %>%
+    group_by(pheRegion) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+all_comparison %>%
+    group_by(imd_quintile) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+
+all_comparison %>%
+    group_by(monthyear) %>%
+    summarise(n = n()) %>%
+    mutate(pct = round(n / sum(n) * 100, 1))
+```
+
+## Additional figures
+
+Observed number of individuals hospitalised with COVID-19, by week of admission, March 2020 to September 2021, with annotations for wave 1, wave 2, and wave 3.
+
+```{r hosp-fig}
+
+hosp %>%
+    ggplot() +
+    aes(week) +
+    geom_bar(fill = "darkgreen") +
+    geom_bracket(
+        xmin = "2020-08", xmax = "2020-28", y.position = 13000,
+        label = "Wave 1", label.size = 5, size = 0.7
+    ) +
+    geom_bracket(
+        xmin = "2020-32", xmax = "2021-16", y.position = 13000,
+        label = "Wave 2", label.size = 5, hjust = 1, size = 0.7
+    ) +
+    geom_bracket(
+        xmin = "2021-20", xmax = "2021-45", y.position = 13000,
+        label = "Wave 3", label.size = 5, size = 0.7
+    ) +
+    theme_minimal() +
+    scale_y_continuous(labels = scales::comma_format()) +
+    scale_x_discrete(
+        breaks = c("2020-12", "2020-34", "2021-02", "2021-24"),
+        labels = c("March\n2020", "August\n2020", "January\n2021", "June\n2021")
+    ) +
+    labs(y = "", x = "") +
+    theme(
+        panel.grid.major.x = element_blank(),
+        text = element_text(size = 16),
+        axis.text.x = element_text(vjust = 7)
+    )
+
+ggsave(here(figure_path, "wave_figure.pdf"), width = 14, height = 8)
+```
+
+Vaccination status of hospitalised individuals, by month of admission and age group, December 2020 to September 2021.
+
+```{r vaccine-fig, fig.width=15}
+
+vaccine_table <- hosp %>%
+    mutate(ageGrp7 = factor(ageGrp7, labels = c("0-15", "15-25", "25-45", "45-65", "65-75", "75-85", "85+"))) %>%
+    filter(
+        monthyear == "Dec 2020" | grepl("2021", monthyear),
+        vaccine != "\u226514 days post third dose"
+    ) %>%
+    mutate(
+        vaccine = fct_drop(vaccine),
+        vaccine = factor(vaccine, labels = c("Unvaccinated", "<21 days after first dose", "\u226521 days after first dose", "\u226514 days after second dose"))
+    ) %>%
+    group_by(monthyear, ageGrp7, vaccine) %>%
+    summarise(n = n(), .groups = "drop_last") %>%
+    mutate(pct = n / sum(n))
+
+# code for changing one category colour
+gg_color_hue <- function(n) {
+    hues <- seq(15, 375, length = n + 1)
+    hcl(h = hues, l = 65, c = 100)[1:n]
+}
+cols <- gg_color_hue(4)
+cols[1] <- "#F1F1F1"
+
+vaccine_table %>% ggplot() +
+    aes(monthyear, n, fill = vaccine) +
+    geom_col(position = position_fill()) +
+    labs(fill = "", y = "Proportion", x = "") +
+    scale_y_continuous(labels = scales::percent, expand = expansion(mult = c(0, 0))) +
+    theme_bw(16) +
+    theme(
+        legend.position = "top",
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)
+    ) +
+    facet_grid(~ageGrp7) +
+    scale_fill_manual(values = cols)
+
+ggsave(here(figure_path, "vaccine_month.pdf"), width = 14, height = 8)
+```
