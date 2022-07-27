@@ -27,7 +27,6 @@ figure_path <- here("figures")
 ```{r pdata}
 
 # define month groupings
-number_order <- c("Mar 2020", "Dec 2020", "Jan 2021", "Feb 2021", "Mar 2021", "Apr 2021", "May 2021", "Jun 2021", "Jul 2021", "Aug 2021", "Sep 2021", "Apr 2020", "May 2020", "Jun 2020", "Jul 2020", "Aug 2020", "Sep 2020", "Oct 2020", "Nov 2020")
 level_order_thinned <- c("Mar 2020", "May 2020", "Jul 2020", "Sep 2020", "Nov 2020", "Jan 2021", "Mar 2021", "May 2021", "Jul 2021", "Sep 2021")
 
 # generate finegray pdata dataset for finegray models
@@ -120,7 +119,7 @@ levels <- labels %>% filter(!label %in% c("Unvaccinated", "Female", "White", "5 
 
 fg_fit <- coxph(Surv(fgstart, fgstop, fgstatus) ~ vaccine + sexHC + strata(ageGrp7) + strata(phec_name) + strata(monthyear) + ethGrp4 + imd_quintile + charlson_index + bed_occupancy_cat,
     weight = fgwt,
-    data = pdata %>% filter(vaccine != ">14 days post third dose")
+    data = pdata %>% filter(vaccine != ">14 days post third dose", grepl("2021", monthyear))
 )
 
 tidy_fg_fit <- broom::tidy(fg_fit, conf.int = TRUE, exponentiate = TRUE)
